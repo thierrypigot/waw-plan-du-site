@@ -30,6 +30,7 @@ Plugin WordPress maison : plan de site HTML accessible via le shortcode `[waw_si
 | `sublevel` | `0` | Profondeur max (0 = illimité) |
 | `exclude` | — | IDs à exclure (CSV) |
 | `taxonomy` + `term` | — | Limite aux contenus d'un terme |
+| `nav_label` | `Plan du site` | Nom accessible du landmark `nav`. À personnaliser si plusieurs plans de site sur une même page. |
 
 La documentation est aussi disponible dans l'admin : Réglages > Plan du site.
 

@@ -25,19 +25,30 @@ class WAW_Sitemap_Renderer {
 
 	public static function defaults(): array {
 		$defaults = array(
-			'only'          => 'page',
-			'sort'          => 'post_title',
-			'order'         => 'ASC',
-			'display_title' => true,
-			'title_level'   => 'h2',
-			'sublevel'      => 0,
-			'exclude'       => array(),
-			'taxonomy'      => '',
-			'term'          => '',
-			'meta_key'      => '',
-			'meta_value'    => '',
-			'nav_label'     => __( 'Plan du site', 'waw-plan-du-site' ),
+			'only'                 => 'page',
+			'sort'                 => 'post_title',
+			'order'                => 'ASC',
+			'display_title'        => true,
+			'title_level'          => 'h2',
+			'sublevel'             => 0,
+			'exclude'              => array(),
+			'exclude_tree'         => array(),
+			'taxonomy'             => '',
+			'term'                 => '',
+			'meta_key'             => '',
+			'meta_value'           => '',
+			'sort_ignore_articles' => false,
+			'cache_enabled'        => false,
+			'nav_label'            => __( 'Plan du site', 'waw-plan-du-site' ),
 		);
+
+		// Les défauts enregistrés dans Réglages → Plan du site priment sur
+		// les défauts codés ; les attributs du shortcode priment sur tout.
+		$saved = get_option( 'waw_sitemap_options', array() );
+
+		if ( is_array( $saved ) ) {
+			$defaults = array_merge( $defaults, array_intersect_key( $saved, $defaults ) );
+		}
 
 		return (array) apply_filters( 'waw_sitemap_default_atts', $defaults );
 	}
@@ -67,13 +78,17 @@ class WAW_Sitemap_Renderer {
 		$level               = strtolower( (string) $atts['title_level'] );
 		$atts['title_level'] = in_array( $level, self::TITLE_LEVELS, true ) ? $level : $defaults['title_level'];
 
-		$atts['sublevel'] = max( 0, (int) $atts['sublevel'] );
-		$atts['exclude']  = wp_parse_id_list( $atts['exclude'] );
-		$atts['taxonomy'] = sanitize_key( (string) $atts['taxonomy'] );
-		$atts['term']     = sanitize_title( (string) $atts['term'] );
+		$atts['sublevel']     = max( 0, (int) $atts['sublevel'] );
+		$atts['exclude']      = wp_parse_id_list( $atts['exclude'] );
+		$atts['exclude_tree'] = wp_parse_id_list( $atts['exclude_tree'] );
+		$atts['taxonomy']     = sanitize_key( (string) $atts['taxonomy'] );
+		$atts['term']         = sanitize_title( (string) $atts['term'] );
 
 		$atts['meta_key']   = trim( (string) $atts['meta_key'] );
 		$atts['meta_value'] = (string) $atts['meta_value'];
+
+		$atts['sort_ignore_articles'] = filter_var( $atts['sort_ignore_articles'], FILTER_VALIDATE_BOOLEAN );
+		$atts['cache_enabled']        = filter_var( $atts['cache_enabled'], FILTER_VALIDATE_BOOLEAN );
 		// Un landmark sans nom accessible est pire que le défaut : repli si vide.
 		$nav_label         = trim( (string) $atts['nav_label'] );
 		$atts['nav_label'] = ( '' === $nav_label ) ? (string) $defaults['nav_label'] : $nav_label;
@@ -85,7 +100,7 @@ class WAW_Sitemap_Renderer {
 	 * IDs à exclure : attribut `exclude` + page courante.
 	 */
 	private static function excluded_ids( array $atts ): array {
-		$ids     = $atts['exclude'];
+		$ids     = array_merge( $atts['exclude'], $atts['exclude_tree'] );
 		$current = get_queried_object_id();
 
 		if ( $current > 0 ) {
@@ -117,12 +132,34 @@ class WAW_Sitemap_Renderer {
 	}
 
 	/**
-	 * Point d'entrée : rend le plan de site complet.
+	 * Point d'entrée : rend le plan de site complet, via le cache si activé.
 	 *
 	 * @param array $raw_atts Attributs bruts (shortcode ou bloc).
 	 */
 	public static function render( array $raw_atts ): string {
-		$atts     = self::normalize( $raw_atts );
+		$atts = self::normalize( $raw_atts );
+
+		if ( ! $atts['cache_enabled'] ) {
+			return self::build( $atts );
+		}
+
+		$cache_key = WAW_Sitemap_Cache::key( $atts );
+		$cached    = get_transient( $cache_key );
+
+		if ( is_array( $cached ) && isset( $cached['html'] ) ) {
+			return (string) $cached['html'];
+		}
+
+		$html = self::build( $atts );
+		set_transient( $cache_key, array( 'html' => $html ), WAW_Sitemap_Cache::ttl() );
+
+		return $html;
+	}
+
+	/**
+	 * Construit le HTML à partir d'attributs déjà normalisés.
+	 */
+	private static function build( array $atts ): string {
 		$sections = '';
 		$debug    = '';
 
@@ -190,6 +227,7 @@ class WAW_Sitemap_Renderer {
 		// is_noindex() ne déclenchent aucune requête supplémentaire.
 		$posts = get_posts( $args );
 		$posts = array_values( array_filter( $posts, fn( $p ) => ! self::is_noindex( $p->ID ) ) );
+		$posts = self::apply_exclude_tree( $posts, $atts );
 		$posts = self::sort_posts( $posts, $atts );
 
 		return (array) apply_filters( 'waw_sitemap_posts', $posts, $post_type, $atts );
@@ -205,12 +243,13 @@ class WAW_Sitemap_Renderer {
 	 * @return WP_Post[]
 	 */
 	private static function sort_posts( array $posts, array $atts ): array {
-		$key   = $atts['sort'];
-		$order = ( 'DESC' === $atts['order'] ) ? -1 : 1;
+		$key     = $atts['sort'];
+		$order   = ( 'DESC' === $atts['order'] ) ? -1 : 1;
+		$ignore  = $atts['sort_ignore_articles'];
 
-		$by_title = static fn( WP_Post $a, WP_Post $b ): int => strcasecmp(
-			remove_accents( $a->post_title ),
-			remove_accents( $b->post_title )
+		$by_title = static fn( WP_Post $a, WP_Post $b ): int => strcmp(
+			self::title_sort_key( $a->post_title, $ignore ),
+			self::title_sort_key( $b->post_title, $ignore )
 		);
 
 		usort( $posts, static function ( WP_Post $a, WP_Post $b ) use ( $key, $order, $by_title ): int {
@@ -230,6 +269,38 @@ class WAW_Sitemap_Renderer {
 		} );
 
 		return $posts;
+	}
+
+	/**
+	 * Clé de tri d'un titre : accents ignorés et, sur demande, articles
+	 * initiaux français ignorés (« La Bolivie » se classe à B).
+	 */
+	private static function title_sort_key( string $title, bool $ignore_articles ): string {
+		$key = strtolower( remove_accents( $title ) );
+
+		if ( $ignore_articles ) {
+			$key = (string) preg_replace( "/^(?:les?|la|une?|des|du)\s+|^(?:l|d)['’]\s*/u", '', $key );
+		}
+
+		return trim( $key );
+	}
+
+	/**
+	 * Retire les descendants des contenus listés dans `exclude_tree`
+	 * (les racines sont déjà exclues de la requête).
+	 *
+	 * @param WP_Post[] $posts
+	 * @return WP_Post[]
+	 */
+	private static function apply_exclude_tree( array $posts, array $atts ): array {
+		if ( array() === $atts['exclude_tree'] ) {
+			return $posts;
+		}
+
+		return array_values( array_filter(
+			$posts,
+			fn( $p ) => array() === array_intersect( $atts['exclude_tree'], get_post_ancestors( $p ) )
+		) );
 	}
 
 	/**
@@ -505,6 +576,7 @@ class WAW_Sitemap_Renderer {
 		$args  = (array) apply_filters( 'waw_sitemap_query_args', $args, $term->taxonomy . ':' . $term->slug, $atts );
 		$posts = get_posts( $args );
 		$posts = array_values( array_filter( $posts, fn( $p ) => ! self::is_noindex( $p->ID ) ) );
+		$posts = self::apply_exclude_tree( $posts, $atts );
 		$posts = self::sort_posts( $posts, $atts );
 
 		return (array) apply_filters( 'waw_sitemap_posts', $posts, $term->taxonomy . ':' . $term->slug, $atts );

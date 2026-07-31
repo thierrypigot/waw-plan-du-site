@@ -108,4 +108,314 @@ class WAW_Sitemap_Renderer {
 
 		return (bool) apply_filters( 'waw_sitemap_is_noindex', $noindex, $post_id );
 	}
+
+	/**
+	 * Point d'entrée : rend le plan de site complet.
+	 *
+	 * @param array $raw_atts Attributs bruts (shortcode ou bloc).
+	 */
+	public static function render( array $raw_atts ): string {
+		$atts     = self::normalize( $raw_atts );
+		$sections = '';
+
+		foreach ( $atts['only'] as $key ) {
+			if ( post_type_exists( $key ) ) {
+				$sections .= self::render_post_type_section( $key, $atts );
+			} elseif ( taxonomy_exists( $key ) ) {
+				$sections .= self::render_taxonomy_section( $key, $atts );
+			} elseif ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+				$sections .= sprintf(
+					"\n<!-- waw-sitemap : la valeur only=\"%s\" ne correspond ni à un type de contenu ni à une taxonomie. -->\n",
+					esc_html( $key )
+				);
+			}
+		}
+
+		if ( '' === trim( $sections ) ) {
+			return '';
+		}
+
+		$html = sprintf(
+			'<nav class="waw-sitemap" aria-label="%s">%s</nav>',
+			esc_attr( $atts['nav_label'] ),
+			$sections
+		);
+
+		return (string) apply_filters( 'waw_sitemap_html', $html, $atts );
+	}
+
+	/**
+	 * Contenus publiés d'un type, triés, hors exclusions/protégés/noindex.
+	 *
+	 * @return WP_Post[]
+	 */
+	private static function get_section_posts( string $post_type, array $atts ): array {
+		$args = array(
+			'post_type'              => $post_type,
+			'post_status'            => 'publish',
+			'posts_per_page'         => -1,
+			'orderby'                => self::ORDERBY_MAP[ $atts['sort'] ],
+			'order'                  => $atts['order'],
+			'post__not_in'           => self::excluded_ids( $atts ),
+			'has_password'           => false,
+			'no_found_rows'          => true,
+			'update_post_term_cache' => false,
+		);
+
+		if ( '' !== $atts['taxonomy'] && '' !== $atts['term'] && taxonomy_exists( $atts['taxonomy'] ) ) {
+			$args['tax_query'] = array(
+				array(
+					'taxonomy' => $atts['taxonomy'],
+					'field'    => 'slug',
+					'terms'    => $atts['term'],
+				),
+			);
+		}
+
+		$args = (array) apply_filters( 'waw_sitemap_query_args', $args, $post_type, $atts );
+
+		// get_posts() amorce le cache des metas : les get_post_meta() de
+		// is_noindex() ne déclenchent aucune requête supplémentaire.
+		$posts = get_posts( $args );
+		$posts = array_values( array_filter( $posts, fn( $p ) => ! self::is_noindex( $p->ID ) ) );
+
+		return (array) apply_filters( 'waw_sitemap_posts', $posts, $post_type, $atts );
+	}
+
+	/**
+	 * Regroupe les posts par parent. Un post dont le parent est absent de la
+	 * liste (exclu, non publié…) est rattaché à son plus proche ancêtre
+	 * visible, ou à la racine.
+	 *
+	 * @param WP_Post[] $posts
+	 * @return array<int, WP_Post[]> Map parent_id → enfants (ordre de requête préservé).
+	 */
+	private static function build_tree( array $posts ): array {
+		$visible = array_flip( wp_list_pluck( $posts, 'ID' ) );
+		$tree    = array();
+
+		foreach ( $posts as $post ) {
+			$parent = (int) $post->post_parent;
+
+			if ( $parent && ! isset( $visible[ $parent ] ) ) {
+				$parent = self::closest_visible_ancestor( $post, $visible );
+			}
+
+			$tree[ $parent ][] = $post;
+		}
+
+		return $tree;
+	}
+
+	private static function closest_visible_ancestor( WP_Post $post, array $visible ): int {
+		$parent_id = (int) $post->post_parent;
+
+		while ( $parent_id ) {
+			if ( isset( $visible[ $parent_id ] ) ) {
+				return $parent_id;
+			}
+			$parent    = get_post( $parent_id );
+			$parent_id = $parent ? (int) $parent->post_parent : 0;
+		}
+
+		return 0;
+	}
+
+	/**
+	 * Rend récursivement un <ul> à partir de l'arbre, borné par `sublevel`.
+	 */
+	private static function render_list( array $tree, int $parent, int $depth, array $atts ): string {
+		if ( empty( $tree[ $parent ] ) ) {
+			return '';
+		}
+
+		if ( $atts['sublevel'] > 0 && $depth > $atts['sublevel'] ) {
+			return '';
+		}
+
+		$items = '';
+
+		foreach ( $tree[ $parent ] as $post ) {
+			$item = sprintf(
+				'<li class="waw-sitemap__item"><a href="%s">%s</a>%s</li>',
+				esc_url( get_permalink( $post ) ),
+				esc_html( get_the_title( $post ) ),
+				self::render_list( $tree, $post->ID, $depth + 1, $atts )
+			);
+
+			$items .= (string) apply_filters( 'waw_sitemap_item', $item, $post, $atts );
+		}
+
+		return sprintf( '<ul class="waw-sitemap__list">%s</ul>', $items );
+	}
+
+	private static function render_post_type_section( string $post_type, array $atts ): string {
+		$posts = self::get_section_posts( $post_type, $atts );
+
+		if ( array() === $posts ) {
+			return '';
+		}
+
+		$pto   = get_post_type_object( $post_type );
+		$title = $pto ? $pto->labels->name : $post_type;
+		$title = (string) apply_filters( 'waw_sitemap_section_title', $title, $post_type, $atts );
+
+		$list = self::render_list( self::build_tree( $posts ), 0, 1, $atts );
+		$html = self::wrap_section( $post_type, $title, $list, $atts );
+
+		return (string) apply_filters( 'waw_sitemap_section_html', $html, $post_type, $atts );
+	}
+
+	/**
+	 * <section> commun. Si le titre visible est masqué, il devient un
+	 * aria-label pour conserver un nom accessible (RGAA).
+	 */
+	private static function wrap_section( string $key, string $title, string $content, array $atts ): string {
+		$heading    = '';
+		$label_attr = '';
+
+		if ( $atts['display_title'] ) {
+			$heading = sprintf(
+				'<%1$s class="waw-sitemap__title">%2$s</%1$s>',
+				$atts['title_level'],
+				esc_html( $title )
+			);
+		} else {
+			$label_attr = sprintf( ' aria-label="%s"', esc_attr( $title ) );
+		}
+
+		return sprintf(
+			'<section class="waw-sitemap__section waw-sitemap__section--%s"%s>%s%s</section>',
+			esc_attr( $key ),
+			$label_attr,
+			$heading,
+			$content
+		);
+	}
+
+	private static function render_taxonomy_section( string $taxonomy, array $atts ): string {
+		$args = array(
+			'taxonomy'   => $taxonomy,
+			'hide_empty' => true,
+			'orderby'    => 'name',
+			'order'      => $atts['order'],
+		);
+
+		$args  = (array) apply_filters( 'waw_sitemap_terms_args', $args, $taxonomy, $atts );
+		$terms = get_terms( $args );
+
+		if ( is_wp_error( $terms ) || array() === $terms ) {
+			return '';
+		}
+
+		$tree = array();
+		foreach ( $terms as $term ) {
+			$tree[ (int) $term->parent ][] = $term;
+		}
+
+		$content = self::render_term_group( $tree, 0, 1, $atts );
+
+		if ( '' === $content ) {
+			return '';
+		}
+
+		$tax   = get_taxonomy( $taxonomy );
+		$title = $tax ? $tax->labels->name : $taxonomy;
+		$title = (string) apply_filters( 'waw_sitemap_section_title', $title, $taxonomy, $atts );
+
+		$html = self::wrap_section( $taxonomy, $title, $content, $atts );
+
+		return (string) apply_filters( 'waw_sitemap_section_html', $html, $taxonomy, $atts );
+	}
+
+	/**
+	 * Rend récursivement les termes (bornés par `sublevel`), chacun avec la
+	 * liste de ses contenus. Niveau de titre = niveau de section + profondeur,
+	 * plafonné à h6.
+	 *
+	 * @param array<int, WP_Term[]> $tree Map parent_id → termes enfants.
+	 */
+	private static function render_term_group( array $tree, int $parent, int $depth, array $atts ): string {
+		if ( empty( $tree[ $parent ] ) ) {
+			return '';
+		}
+
+		if ( $atts['sublevel'] > 0 && $depth > $atts['sublevel'] ) {
+			return '';
+		}
+
+		$heading_level = min( 6, (int) substr( $atts['title_level'], 1 ) + $depth );
+		$items         = '';
+
+		foreach ( $tree[ $parent ] as $term ) {
+			$posts    = self::get_term_posts( $term, $atts );
+			$children = self::render_term_group( $tree, (int) $term->term_id, $depth + 1, $atts );
+
+			if ( array() === $posts && '' === $children ) {
+				continue;
+			}
+
+			$term_link  = get_term_link( $term );
+			$term_link  = is_wp_error( $term_link ) ? '' : $term_link;
+			$title_html = sprintf(
+				'<h%1$d class="waw-sitemap__term-title"><a href="%2$s">%3$s</a></h%1$d>',
+				$heading_level,
+				esc_url( $term_link ),
+				esc_html( $term->name )
+			);
+			$title_html = (string) apply_filters( 'waw_sitemap_term_title', $title_html, $term, $atts );
+
+			$posts_list = ( array() === $posts )
+				? ''
+				: self::render_list( self::build_tree( $posts ), 0, 1, $atts );
+
+			$items .= sprintf(
+				'<li class="waw-sitemap__term">%s%s%s</li>',
+				$title_html,
+				$posts_list,
+				$children
+			);
+		}
+
+		if ( '' === $items ) {
+			return '';
+		}
+
+		return sprintf( '<ul class="waw-sitemap__terms">%s</ul>', $items );
+	}
+
+	/**
+	 * Contenus publiés directement rattachés à un terme (sans les enfants).
+	 *
+	 * @return WP_Post[]
+	 */
+	private static function get_term_posts( WP_Term $term, array $atts ): array {
+		$tax = get_taxonomy( $term->taxonomy );
+
+		$args = array(
+			'post_type'              => $tax ? $tax->object_type : 'post',
+			'post_status'            => 'publish',
+			'posts_per_page'         => -1,
+			'orderby'                => self::ORDERBY_MAP[ $atts['sort'] ],
+			'order'                  => $atts['order'],
+			'post__not_in'           => self::excluded_ids( $atts ),
+			'has_password'           => false,
+			'no_found_rows'          => true,
+			'update_post_term_cache' => false,
+			'tax_query'              => array(
+				array(
+					'taxonomy'         => $term->taxonomy,
+					'field'            => 'term_id',
+					'terms'            => $term->term_id,
+					'include_children' => false,
+				),
+			),
+		);
+
+		$args  = (array) apply_filters( 'waw_sitemap_query_args', $args, $term->taxonomy . ':' . $term->slug, $atts );
+		$posts = get_posts( $args );
+		$posts = array_values( array_filter( $posts, fn( $p ) => ! self::is_noindex( $p->ID ) ) );
+
+		return (array) apply_filters( 'waw_sitemap_posts', $posts, $term->taxonomy . ':' . $term->slug, $atts );
+	}
 }

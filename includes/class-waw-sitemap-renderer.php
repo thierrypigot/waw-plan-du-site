@@ -170,6 +170,7 @@ class WAW_Sitemap_Renderer {
 			'no_found_rows'          => true,
 			'update_post_term_cache' => false,
 			'ignore_custom_sort'     => true,
+			'suppress_filters'       => false,
 		);
 
 		if ( '' !== $atts['taxonomy'] && '' !== $atts['term'] && taxonomy_exists( $atts['taxonomy'] ) ) {
@@ -489,6 +490,7 @@ class WAW_Sitemap_Renderer {
 			'no_found_rows'          => true,
 			'update_post_term_cache' => false,
 			'ignore_custom_sort'     => true,
+			'suppress_filters'       => false,
 			'tax_query'              => array(
 				array(
 					'taxonomy'         => $term->taxonomy,

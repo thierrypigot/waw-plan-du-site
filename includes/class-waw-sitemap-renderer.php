@@ -117,6 +117,7 @@ class WAW_Sitemap_Renderer {
 	public static function render( array $raw_atts ): string {
 		$atts     = self::normalize( $raw_atts );
 		$sections = '';
+		$debug    = '';
 
 		foreach ( $atts['only'] as $key ) {
 			if ( post_type_exists( $key ) ) {
@@ -124,22 +125,23 @@ class WAW_Sitemap_Renderer {
 			} elseif ( taxonomy_exists( $key ) ) {
 				$sections .= self::render_taxonomy_section( $key, $atts );
 			} elseif ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
-				$sections .= sprintf(
+				$debug .= sprintf(
 					"\n<!-- waw-sitemap : la valeur only=\"%s\" ne correspond ni à un type de contenu ni à une taxonomie. -->\n",
 					esc_html( $key )
 				);
 			}
 		}
 
-		if ( '' === trim( $sections ) ) {
-			return '';
+		// Pas de <nav> vide : le landmark n'est rendu qu'avec du contenu réel.
+		if ( '' === $sections ) {
+			return (string) apply_filters( 'waw_sitemap_html', $debug, $atts );
 		}
 
 		$html = sprintf(
 			'<nav class="waw-sitemap" aria-label="%s">%s</nav>',
 			esc_attr( $atts['nav_label'] ),
 			$sections
-		);
+		) . $debug;
 
 		return (string) apply_filters( 'waw_sitemap_html', $html, $atts );
 	}

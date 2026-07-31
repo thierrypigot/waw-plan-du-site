@@ -346,7 +346,10 @@ class WAW_Sitemap_Renderer {
 			return '';
 		}
 
-		$heading_level = min( 6, (int) substr( $atts['title_level'], 1 ) + $depth );
+		// Sans titre de section visible, les termes reprennent son niveau
+		// pour ne pas créer de saut dans la hiérarchie de titres (RGAA 9.1).
+		$offset        = $atts['display_title'] ? $depth : $depth - 1;
+		$heading_level = min( 6, max( 2, (int) substr( $atts['title_level'], 1 ) + $offset ) );
 		$items         = '';
 
 		foreach ( $tree[ $parent ] as $term ) {

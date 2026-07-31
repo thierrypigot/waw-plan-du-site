@@ -17,6 +17,7 @@ Plugin WordPress maison : plan de site HTML accessible via le shortcode `[waw_si
 [waw_sitemap_page only="category"]
 [waw_sitemap_page only="page,post" exclude="12,34"]
 [waw_sitemap_page only="post" taxonomy="category" term="actualites"]
+[waw_sitemap_page only="projet" meta_key="afficher_sur_la_carte" meta_value="1"]
 [waw_sitemap_page display_title="false"]
 ```
 
@@ -30,6 +31,7 @@ Plugin WordPress maison : plan de site HTML accessible via le shortcode `[waw_si
 | `sublevel` | `0` | Profondeur max (0 = illimité) |
 | `exclude` | — | IDs à exclure (CSV) |
 | `taxonomy` + `term` | — | Limite aux contenus d'un terme |
+| `meta_key` + `meta_value` | — | Limite aux contenus dont la meta vaut la valeur (ACF true/false : `meta_value="1"`). `meta_key` seul = la meta doit exister. |
 | `nav_label` | `Plan du site` | Nom accessible du landmark `nav`. À personnaliser si plusieurs plans de site sur une même page. |
 
 La documentation est aussi disponible dans l'admin : Réglages > Plan du site.

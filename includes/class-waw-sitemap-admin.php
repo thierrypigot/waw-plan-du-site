@@ -75,6 +75,11 @@ class WAW_Sitemap_Admin {
 						<td><?php esc_html_e( 'Limite les sections de contenus aux éléments du terme donné (slug) dans la taxonomie donnée.', 'waw-plan-du-site' ); ?></td>
 					</tr>
 					<tr>
+						<td><code>meta_key</code> + <code>meta_value</code></td>
+						<td>&mdash;</td>
+						<td><?php esc_html_e( 'Limite aux contenus dont la meta vaut la valeur donnée. Avec meta_key seul, la meta doit simplement exister. Exemple champ ACF vrai/faux : meta_key="afficher_sur_la_carte" meta_value="1".', 'waw-plan-du-site' ); ?></td>
+					</tr>
+					<tr>
 						<td><code>nav_label</code></td>
 						<td><?php esc_html_e( 'Plan du site', 'waw-plan-du-site' ); ?></td>
 						<td><?php esc_html_e( 'Nom accessible du bloc de navigation. À personnaliser si plusieurs plans de site figurent sur la même page, pour que chaque repère reste identifiable au lecteur d\'écran.', 'waw-plan-du-site' ); ?></td>

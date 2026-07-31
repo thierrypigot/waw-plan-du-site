@@ -34,6 +34,8 @@ class WAW_Sitemap_Renderer {
 			'exclude'       => array(),
 			'taxonomy'      => '',
 			'term'          => '',
+			'meta_key'      => '',
+			'meta_value'    => '',
 			'nav_label'     => __( 'Plan du site', 'waw-plan-du-site' ),
 		);
 
@@ -69,6 +71,9 @@ class WAW_Sitemap_Renderer {
 		$atts['exclude']  = wp_parse_id_list( $atts['exclude'] );
 		$atts['taxonomy'] = sanitize_key( (string) $atts['taxonomy'] );
 		$atts['term']     = sanitize_title( (string) $atts['term'] );
+
+		$atts['meta_key']   = trim( (string) $atts['meta_key'] );
+		$atts['meta_value'] = (string) $atts['meta_value'];
 		// Un landmark sans nom accessible est pire que le défaut : repli si vide.
 		$nav_label         = trim( (string) $atts['nav_label'] );
 		$atts['nav_label'] = ( '' === $nav_label ) ? (string) $defaults['nav_label'] : $nav_label;
@@ -176,6 +181,7 @@ class WAW_Sitemap_Renderer {
 			);
 		}
 
+		$args = self::maybe_add_meta_filter( $args, $atts );
 		$args = (array) apply_filters( 'waw_sitemap_query_args', $args, $post_type, $atts );
 
 		// get_posts() amorce le cache des metas : les get_post_meta() de
@@ -184,6 +190,30 @@ class WAW_Sitemap_Renderer {
 		$posts = array_values( array_filter( $posts, fn( $p ) => ! self::is_noindex( $p->ID ) ) );
 
 		return (array) apply_filters( 'waw_sitemap_posts', $posts, $post_type, $atts );
+	}
+
+	/**
+	 * Filtre par meta : égalité si `meta_value` est fourni, sinon simple
+	 * existence de la clé. Exemple ACF true/false : meta_value="1".
+	 */
+	private static function maybe_add_meta_filter( array $args, array $atts ): array {
+		if ( '' === $atts['meta_key'] ) {
+			return $args;
+		}
+
+		$args['meta_query'] = array(
+			( '' === $atts['meta_value'] )
+				? array(
+					'key'     => $atts['meta_key'],
+					'compare' => 'EXISTS',
+				)
+				: array(
+					'key'   => $atts['meta_key'],
+					'value' => $atts['meta_value'],
+				),
+		);
+
+		return $args;
 	}
 
 	/**
@@ -429,6 +459,7 @@ class WAW_Sitemap_Renderer {
 			),
 		);
 
+		$args  = self::maybe_add_meta_filter( $args, $atts );
 		$args  = (array) apply_filters( 'waw_sitemap_query_args', $args, $term->taxonomy . ':' . $term->slug, $atts );
 		$posts = get_posts( $args );
 		$posts = array_values( array_filter( $posts, fn( $p ) => ! self::is_noindex( $p->ID ) ) );

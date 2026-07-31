@@ -49,10 +49,10 @@ class WAW_Sitemap_Renderer {
 		$raw      = array_change_key_case( $raw, CASE_LOWER );
 		$atts     = array_merge( $defaults, array_intersect_key( $raw, $defaults ) );
 
-		$atts['only'] = array_values( array_filter( array_map(
+		$atts['only'] = array_values( array_unique( array_filter( array_map(
 			'sanitize_key',
 			array_map( 'trim', explode( ',', (string) ( is_array( $atts['only'] ) ? implode( ',', $atts['only'] ) : $atts['only'] ) ) )
-		) ) );
+		) ) ) );
 
 		$sort         = strtolower( (string) $atts['sort'] );
 		$sort         = ( 'id' === $sort ) ? 'ID' : $sort;
@@ -69,7 +69,9 @@ class WAW_Sitemap_Renderer {
 		$atts['exclude']  = wp_parse_id_list( $atts['exclude'] );
 		$atts['taxonomy'] = sanitize_key( (string) $atts['taxonomy'] );
 		$atts['term']     = sanitize_title( (string) $atts['term'] );
-		$atts['nav_label'] = (string) $atts['nav_label'];
+		// Un landmark sans nom accessible est pire que le défaut : repli si vide.
+		$nav_label         = trim( (string) $atts['nav_label'] );
+		$atts['nav_label'] = ( '' === $nav_label ) ? (string) $defaults['nav_label'] : $nav_label;
 
 		return (array) apply_filters( 'waw_sitemap_atts', $atts, $raw );
 	}
@@ -360,14 +362,24 @@ class WAW_Sitemap_Renderer {
 				continue;
 			}
 
-			$term_link  = get_term_link( $term );
-			$term_link  = is_wp_error( $term_link ) ? '' : $term_link;
-			$title_html = sprintf(
-				'<h%1$d class="waw-sitemap__term-title"><a href="%2$s">%3$s</a></h%1$d>',
-				$heading_level,
-				esc_url( $term_link ),
-				esc_html( $term->name )
-			);
+			// Sans permalien valide, le nom du terme est rendu sans lien
+			// plutôt qu'avec un href vide trompeur (WCAG 2.4.4).
+			$term_link = get_term_link( $term );
+
+			if ( is_wp_error( $term_link ) || '' === $term_link ) {
+				$title_html = sprintf(
+					'<h%1$d class="waw-sitemap__term-title">%2$s</h%1$d>',
+					$heading_level,
+					esc_html( $term->name )
+				);
+			} else {
+				$title_html = sprintf(
+					'<h%1$d class="waw-sitemap__term-title"><a href="%2$s">%3$s</a></h%1$d>',
+					$heading_level,
+					esc_url( $term_link ),
+					esc_html( $term->name )
+				);
+			}
 			$title_html = (string) apply_filters( 'waw_sitemap_term_title', $title_html, $term, $atts );
 
 			$posts_list = ( array() === $posts )

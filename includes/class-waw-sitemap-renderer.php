@@ -169,6 +169,7 @@ class WAW_Sitemap_Renderer {
 			'has_password'           => false,
 			'no_found_rows'          => true,
 			'update_post_term_cache' => false,
+			'ignore_custom_sort'     => true,
 		);
 
 		if ( '' !== $atts['taxonomy'] && '' !== $atts['term'] && taxonomy_exists( $atts['taxonomy'] ) ) {
@@ -188,8 +189,46 @@ class WAW_Sitemap_Renderer {
 		// is_noindex() ne déclenchent aucune requête supplémentaire.
 		$posts = get_posts( $args );
 		$posts = array_values( array_filter( $posts, fn( $p ) => ! self::is_noindex( $p->ID ) ) );
+		$posts = self::sort_posts( $posts, $atts );
 
 		return (array) apply_filters( 'waw_sitemap_posts', $posts, $post_type, $atts );
+	}
+
+	/**
+	 * Ré-applique le tri demandé en PHP : les plugins de tri personnalisé
+	 * (Post Types Order et similaires) écrasent l'orderby SQL via
+	 * pre_get_posts, ce qui casserait le contrat de l'attribut `sort`.
+	 * Le tri des titres ignore les accents (Éthiopie se classe à E).
+	 *
+	 * @param WP_Post[] $posts
+	 * @return WP_Post[]
+	 */
+	private static function sort_posts( array $posts, array $atts ): array {
+		$key   = $atts['sort'];
+		$order = ( 'DESC' === $atts['order'] ) ? -1 : 1;
+
+		$by_title = static fn( WP_Post $a, WP_Post $b ): int => strcasecmp(
+			remove_accents( $a->post_title ),
+			remove_accents( $b->post_title )
+		);
+
+		usort( $posts, static function ( WP_Post $a, WP_Post $b ) use ( $key, $order, $by_title ): int {
+			$cmp = match ( $key ) {
+				'menu_order' => $a->menu_order <=> $b->menu_order,
+				'post_date'  => strcmp( $a->post_date, $b->post_date ),
+				'post_name'  => strcmp( $a->post_name, $b->post_name ),
+				'ID'         => $a->ID <=> $b->ID,
+				default      => $by_title( $a, $b ),
+			};
+
+			if ( 0 === $cmp && 'post_title' !== $key ) {
+				$cmp = $by_title( $a, $b );
+			}
+
+			return $cmp * $order;
+		} );
+
+		return $posts;
 	}
 
 	/**
@@ -449,6 +488,7 @@ class WAW_Sitemap_Renderer {
 			'has_password'           => false,
 			'no_found_rows'          => true,
 			'update_post_term_cache' => false,
+			'ignore_custom_sort'     => true,
 			'tax_query'              => array(
 				array(
 					'taxonomy'         => $term->taxonomy,
@@ -463,6 +503,7 @@ class WAW_Sitemap_Renderer {
 		$args  = (array) apply_filters( 'waw_sitemap_query_args', $args, $term->taxonomy . ':' . $term->slug, $atts );
 		$posts = get_posts( $args );
 		$posts = array_values( array_filter( $posts, fn( $p ) => ! self::is_noindex( $p->ID ) ) );
+		$posts = self::sort_posts( $posts, $atts );
 
 		return (array) apply_filters( 'waw_sitemap_posts', $posts, $term->taxonomy . ':' . $term->slug, $atts );
 	}

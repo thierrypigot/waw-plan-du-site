@@ -4,7 +4,7 @@ Tags: sitemap, plan du site, html sitemap, accessibilité, shortcode
 Requires at least: 6.7
 Tested up to: 7.0
 Requires PHP: 8.1
-Stable tag: 1.0.0
+Stable tag: 1.1.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -44,6 +44,13 @@ La documentation complète est disponible dans Réglages > Plan du site.
 Non. Le markup est sémantique (classes BEM `waw-sitemap__*`) et le thème garde la main sur les styles.
 
 == Changelog ==
+
+= 1.1.0 =
+* Écran de réglages : valeurs par défaut globales (niveau des titres, tri, profondeur, libellé de navigation, exclusions).
+* Mises à jour automatiques depuis les releases GitHub.
+* Nouveaux attributs : exclude_tree (exclut un contenu et sa descendance), sort_ignore_articles (« La Bolivie » se classe à B).
+* Cache transient optionnel (12 h, invalidé à chaque modification de contenu).
+* Compatibilité multilingue (WPML/Polylang) : seule la langue courante est listée.
 
 = 1.0.0 =
 * Version initiale : shortcode [waw_sitemap_page], page de documentation dans Réglages, 12 filtres développeur.

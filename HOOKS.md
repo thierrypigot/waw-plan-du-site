@@ -1,6 +1,6 @@
 # Hooks de waw-plan-du-site
 
-Douze filtres couvrent tout le pipeline de rendu. Ils s'utilisent depuis un
+Treize filtres couvrent tout le pipeline de rendu. Ils s'utilisent depuis un
 thème (functions.php) ou un mu-plugin.
 
 ## Attributs
@@ -188,4 +188,20 @@ apply_filters( 'waw_sitemap_html', string $html, array $atts ): string
 add_filter( 'waw_sitemap_html', function ( string $html ): string {
 	return $html . "\n<!-- généré par waw-plan-du-site -->";
 } );
+```
+
+## Cache
+
+### `waw_sitemap_cache_ttl`
+
+Durée de vie du cache transient quand il est activé dans les réglages.
+Défaut : 12 heures. Le cache est de toute façon invalidé à chaque
+création/modification/suppression de contenu ou de terme.
+
+```php
+apply_filters( 'waw_sitemap_cache_ttl', int $ttl ): int
+```
+
+```php
+add_filter( 'waw_sitemap_cache_ttl', fn(): int => DAY_IN_SECONDS );
 ```

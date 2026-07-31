@@ -2,10 +2,14 @@
 
 Plugin WordPress maison : plan de site HTML accessible via le shortcode `[waw_sitemap_page]`. Remplace [wp-sitemap-page](https://fr.wordpress.org/plugins/wp-sitemap-page/), qui n'est plus maintenu.
 
-- WordPress 6.7+ · PHP 8.1+ · aucune dépendance, aucun build
+- WordPress 6.7+ · PHP 8.1+ · aucun build
 - Markup sémantique et accessible (RGAA) : landmark `nav`, hiérarchie de titres sans saut, aucun CSS imposé
 - Contenus noindex (Yoast, Rank Math, SEOPress), protégés par mot de passe et page courante exclus automatiquement
-- 12 filtres développeur : voir [HOOKS.md](HOOKS.md)
+- Écran de réglages (Réglages > Plan du site) : valeurs par défaut globales, le shortcode garde le dernier mot
+- Mises à jour automatiques depuis les releases GitHub (plugin-update-checker)
+- Cache transient optionnel, invalidé à chaque modification de contenu
+- Compatible multilingue (WPML/Polylang) et résistant aux plugins de tri type Post Types Order
+- 13 filtres développeur : voir [HOOKS.md](HOOKS.md)
 
 ## Utilisation
 
@@ -29,7 +33,9 @@ Plugin WordPress maison : plan de site HTML accessible via le shortcode `[waw_si
 | `display_title` | `true` | Titre au-dessus de chaque section (sinon `aria-label`) |
 | `title_level` | `h2` | `h2`, `h3` ou `h4` |
 | `sublevel` | `0` | Profondeur max (0 = illimité) |
-| `exclude` | — | IDs à exclure (CSV) |
+| `exclude` | — | IDs à exclure (CSV) ; leurs enfants remontent d'un niveau |
+| `exclude_tree` | — | IDs à exclure avec toute leur descendance |
+| `sort_ignore_articles` | `false` | Ignore les articles initiaux dans le tri (« La Bolivie » à B) |
 | `taxonomy` + `term` | — | Limite aux contenus d'un terme |
 | `meta_key` + `meta_value` | — | Limite aux contenus dont la meta vaut la valeur (ACF true/false : `meta_value="1"`). `meta_key` seul = la meta doit exister. |
 | `nav_label` | `Plan du site` | Nom accessible du landmark `nav`. À personnaliser si plusieurs plans de site sur une même page. |

@@ -42,6 +42,18 @@ Plugin WordPress maison : plan de site HTML accessible via le shortcode `[waw_si
 
 La documentation est aussi disponible dans l'admin : Réglages > Plan du site.
 
+## Installation et publication d'une version
+
+Chaque release GitHub porte un `waw-plan-du-site.zip` installable tel quel (Extensions > Ajouter > Téléverser). C'est aussi ce zip que télécharge la mise à jour automatique.
+
+Pour publier : passer la version dans l'en-tête `Version`, la constante `WAW_SITEMAP_VERSION` et le `Stable tag` du readme.txt, committer, puis pousser un tag :
+
+```bash
+git tag v1.2.0 && git push origin v1.2.0
+```
+
+Le workflow `.github/workflows/release.yml` vérifie que les trois versions correspondent au tag, construit le zip (`git archive`, exclusions dans `.gitattributes`) et crée la release. Pour packager un tag existant : onglet Actions > Release > Run workflow.
+
 ## Feuille de route
 
 - v2 : bloc Gutenberg dynamique (même moteur de rendu)
